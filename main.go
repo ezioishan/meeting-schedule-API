@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"encoding/json"
-	"go.mongodb.org/mongo-driver/mongo"
 	"math/rand"
 	"strconv"
 	"context"
 	"time"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 // "go.mongodb.org/mongo-driver/bson"
 // "go.mongodb.org/mongo-driver/mongo/readpref"
@@ -20,7 +20,7 @@ import (
 type Meeting struct {
 	Id				string			`json:"id"`
 	Title			string			`json:"title"`
-	Participants	*Participants	`json:"participants"`
+	Participants	[]Participants	`json:"participants"`
 	StartTime 		string			`json:"startTime"`
 	EndTime 		string			`json:"endTime"`
 }
@@ -30,6 +30,7 @@ type Participants struct {
 	Rsvp	string		`json:"rsvp"`
 }
 
+//Dummy database
 var tasks []Meeting
 // var client *mongo.Client
 
@@ -68,16 +69,14 @@ func handleMeetings(w http.ResponseWriter, r *http.Request) {
 		
 	} else if r.Method == "POST" {
 		// scheduleMeeting(w, r)
+		//creating meeting and storing in database ----- NOT WORKING
 		var client *mongo.Client
 		var task Meeting
-		 _ = json.NewDecoder(r.Body).Decode(&task)
+		_ = json.NewDecoder(r.Body).Decode(&task)
 		task.Id = strconv.Itoa(rand.Intn(100))
 		collection := client.Database("restapi").Collection("meetings")
-		ctx, err := context.WithTimeout(context.Background(), 10*time.Second)
-		if err != nil {
-			fmt.Print("Here!")
-			log.Fatal(err)
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		result, _ := collection.InsertOne(ctx, task)
 		// tasks = append(tasks, task)
 		json.NewEncoder(w).Encode(result)
@@ -86,6 +85,7 @@ func handleMeetings(w http.ResponseWriter, r *http.Request) {
 }
 
 func getMeeting(w http.ResponseWriter, r *http.Request) {
+	//done for dummy data
 	w.Header().Add("Content-type", "application/json")
 	query := r.URL.Query()
 	id := query.Get("id")
@@ -103,25 +103,19 @@ func getMeeting(w http.ResponseWriter, r *http.Request) {
 func main() {
 	fmt.Println("Server started...")
 
-	tasks = append(tasks, Meeting{Id: "1", Title: "abc", Participants: &Participants{Name: "ishan", Email: "x@m.com", Rsvp: "yes"}, StartTime:"3pm", EndTime: "4pm"})
-	tasks = append(tasks, Meeting{Id: "2", Title: "ezzz", Participants: &Participants{Name: "john", Email: "z@m.com", Rsvp: "yes"}, StartTime:"5pm", EndTime: "6pm"})
+	//Dummy Data
+	tasks = append(tasks, Meeting{Id: "1", Title: "abc", Participants: []Participants{{Name: "ishan", Email: "x@m.com", Rsvp: "yes"}}, StartTime:"3pm", EndTime: "4pm"})
+	tasks = append(tasks, Meeting{Id: "2", Title: "ezzz", Participants: []Participants{{Name: "john", Email: "z@m.com", Rsvp: "yes"}}, StartTime:"5pm", EndTime: "6pm"})
 	
-	// Set client options
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
 	
-	// Connect to MongoDB
-	client, err := mongo.Connect(context.TODO(), clientOptions)
-	if err != nil {
-        log.Fatal(err)
-    }
-	// Check the connection
-	err = client.Ping(context.TODO(), nil)
-	if err != nil {
-        log.Fatal(err)
-    }
-	// get collection as ref
-	// collection := client.Database("restapi").Collection("meetings")
-
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
+	defer func() {
+		if err = client.Disconnect(ctx); err != nil {
+			panic(err)
+		}
+	}()
 	http.HandleFunc("/meeting", getMeeting)
 	http.HandleFunc("/meetings", handleMeetings)
 	log.Fatal(http.ListenAndServe(":8080", nil))
